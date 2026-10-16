@@ -13,19 +13,10 @@ import { normalizeSamples } from "@/lib/blueprint";
 import { seedApp } from "@/lib/seed";
 import { CURATED } from "@/lib/curated";
 import { storageKeyOf, RuntimeApp } from "./runtime-app";
+import { useI18n } from "@/lib/i18n/provider";
 
 type Phase = "pick" | "plan" | "build" | "test" | "ship";
 type Check = { label: string; run: (bp: Blueprint) => boolean };
-
-const CHECKS: Check[] = [
-  { label: "schema: valid constraint space", run: (bp) => bp.entities.length >= 1 && bp.entities.every((e) => e.fields.length >= 2) },
-  { label: "fields: every field typed", run: (bp) => bp.entities.every((e) => e.fields.every((f) => ["text", "number", "currency", "date", "select", "boolean"].includes(f.type))) },
-  { label: "views: renderable against entities", run: (bp) => bp.views.every((v) => bp.entities.some((e) => e.name === v.entity)) },
-  { label: "dashboard: aggregations resolvable", run: (bp) => bp.dashboard.every((d) => bp.entities.some((e) => e.name === d.entity)) },
-  { label: "workflow: approval path exists", run: (bp) => !bp.workflow || bp.workflow.fromStatus !== bp.workflow.toStatus },
-  { label: "samples: LLM rows type-checked", run: (bp) => bp.entities.every((e) => !e.samples?.length || normalizeSamples(e).length > 0) },
-  { label: "seed: realistic demo data generated", run: (bp) => Object.values(seedApp(bp)).every((r) => r.length >= 8) },
-];
 
 const PLAN_LINES = (bp: Blueprint): string[] => [
   `app        ${bp.appName}`,
@@ -53,16 +44,8 @@ function blueprintJsonLines(bp: Blueprint): string[] {
   return JSON.stringify(trimmed, null, 2).split("\n");
 }
 
-const BUILD_MODULES = [
-  { name: "schema", desc: "entity + field definitions" },
-  { name: "seed", desc: "realistic demo rows, LLM samples merged" },
-  { name: "dashboard", desc: "count / sum / avg cards + breakdown" },
-  { name: "views", desc: "table · board · calendar" },
-  { name: "form", desc: "create / edit record modal" },
-  { name: "workflow", desc: "approval gate" },
-];
-
 export function Factory() {
+  const { dict: d } = useI18n();
   const [phase, setPhase] = useState<Phase>("pick");
   const [prompt, setPrompt] = useState("");
   const [bp, setBp] = useState<Blueprint | null>(null);
@@ -74,6 +57,16 @@ export function Factory() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const CHECKS: Check[] = useMemo(() => [
+    { label: d.factory.checks[0], run: (bp) => bp.entities.length >= 1 && bp.entities.every((e) => e.fields.length >= 2) },
+    { label: d.factory.checks[1], run: (bp) => bp.entities.every((e) => e.fields.every((f) => ["text", "number", "currency", "date", "select", "boolean"].includes(f.type))) },
+    { label: d.factory.checks[2], run: (bp) => bp.views.every((v) => bp.entities.some((e) => e.name === v.entity)) },
+    { label: d.factory.checks[3], run: (bp) => bp.dashboard.every((dd) => bp.entities.some((e) => e.name === dd.entity)) },
+    { label: d.factory.checks[4], run: (bp) => !bp.workflow || bp.workflow.fromStatus !== bp.workflow.toStatus },
+    { label: d.factory.checks[5], run: (bp) => bp.entities.every((e) => !e.samples?.length || normalizeSamples(e).length > 0) },
+    { label: d.factory.checks[6], run: (bp) => Object.values(seedApp(bp)).every((r) => r.length >= 8) },
+  ], [d]);
 
   const clearTimers = () => {
     for (const t of timers.current) clearTimeout(t);
@@ -95,20 +88,20 @@ export function Factory() {
     const lines = PLAN_LINES(blueprint).length;
     for (let i = 1; i <= lines; i++) later(320 * i, () => setPlanLine(i));
     later(320 * lines + 500, () => setPhase("build"));
-    for (let i = 1; i <= BUILD_MODULES.length; i++) later(320 * lines + 500 + 420 * i, () => setBuildStep(i));
-    const buildDone = 320 * lines + 500 + 420 * BUILD_MODULES.length + 400;
+    for (let i = 1; i <= d.factory.modules.length; i++) later(320 * lines + 500 + 420 * i, () => setBuildStep(i));
+    const buildDone = 320 * lines + 500 + 420 * d.factory.modules.length + 400;
     later(buildDone, () => setPhase("test"));
     // the checks actually run — a failing check would stop the line
     for (let i = 1; i <= CHECKS.length; i++) {
       later(buildDone + 380 * i, () => {
         const ok = CHECKS.slice(0, i).every((c) => c.run(blueprint));
         setCheckStep(i);
-        if (!ok) setError(`QC failed at: ${CHECKS[i - 1].label}`);
+        if (!ok) setError(d.factory.qcFailed.replace("{check}", CHECKS[i - 1].label));
       });
     }
     later(buildDone + 380 * CHECKS.length + 500, () => setPhase("ship"));
     void encodeBlueprint(blueprint).then((s) => setSharePath(`/app?bp=${s}`));
-  }, []);
+  }, [CHECKS, d]);
 
   const build = useCallback(async (p: string) => {
     setPhase("plan");
@@ -127,16 +120,16 @@ export function Factory() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "The planner is unavailable.");
+        setError(data.error ?? d.factory.plannerUnavailable);
         setPhase("pick");
         return;
       }
       startTheater(data.blueprint, data.note ?? null);
     } catch {
-      setError("Network error — could not reach the factory.");
+      setError(d.factory.networkError);
       setPhase("pick");
     }
-  }, [startTheater]);
+  }, [startTheater, d]);
 
   const shareUrl = sharePath;
   const jsonLines = useMemo(() => (bp ? blueprintJsonLines(bp) : []), [bp]);
@@ -176,23 +169,20 @@ export function Factory() {
             <input
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe a small business app… e.g. “a gym membership tracker with approval”"
+              placeholder={d.factory.placeholder}
               maxLength={200}
               className="flex-1 rounded-lg border border-line bg-card-2 px-4 py-2.5 text-sm outline-none focus:border-accent"
             />
             <button type="submit" className="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 dark:text-[#1a1206]">
-              Build it
+              {d.factory.buildBtn}
             </button>
           </form>
-          <p className="mt-2 text-xs text-muted">
-            The planner fills a strict blueprint schema — never code. Without an LLM key the
-            nearest curated template is served instead, labeled as such.
-          </p>
+          <p className="mt-2 text-xs text-muted">{d.factory.note}</p>
           {error ? <p className="mt-2 text-sm text-bad">{error}</p> : null}
         </div>
 
         <div>
-          <p className="mb-3 text-sm font-medium">…or watch a scenario build</p>
+          <p className="mb-3 text-sm font-medium">{d.factory.orScenario}</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {CURATED.map((bp) => (
               <button
@@ -213,16 +203,17 @@ export function Factory() {
   }
 
   if (!bp) {
-    return <div className="card p-8 text-center text-muted">Requesting blueprint…</div>;
+    return <div className="card p-8 text-center text-muted">{d.factory.requesting}</div>;
   }
+
+  const STAGES = ["plan", "build", "test", "ship"] as const;
 
   return (
     <div className="space-y-4">
       {/* stage header */}
       <div className="card flex flex-wrap items-center gap-x-6 gap-y-2 p-4">
-        {(["plan", "build", "test", "ship"] as const).map((s, i) => {
-          const order = ["plan", "build", "test", "ship"];
-          const state = order.indexOf(phase) > i ? "done" : phase === s ? "active" : "todo";
+        {STAGES.map((s, i) => {
+          const state = STAGES.indexOf(phase as (typeof STAGES)[number]) > i ? "done" : phase === s ? "active" : "todo";
           return (
             <div key={s} className="flex items-center gap-2 text-sm">
               <span
@@ -234,7 +225,7 @@ export function Factory() {
               >
                 {state === "done" ? "✓" : i + 1}
               </span>
-              <span className={state === "todo" ? "text-muted" : "font-medium"}>{s.toUpperCase()}</span>
+              <span className={state === "todo" ? "text-muted" : "font-medium"}>{d.factory.stages[s]}</span>
             </div>
           );
         })}
@@ -242,10 +233,10 @@ export function Factory() {
           <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
             bp.source === "llm" ? "bg-accent-soft text-accent" : "bg-card-2 text-muted"
           }`}>
-            {bp.source === "llm" ? "planned by LLM" : "curated template"}
+            {bp.source === "llm" ? d.factory.plannedByLlm : d.factory.curatedTemplate}
           </span>
           <button type="button" onClick={() => { clearTimers(); setPhase("pick"); setBp(null); }} className="text-xs text-muted underline underline-offset-2 hover:text-fg">
-            ← new build
+            {d.factory.newBuild}
           </button>
         </div>
       </div>
@@ -260,7 +251,7 @@ export function Factory() {
         <div className={`h-1 ${phase === "plan" ? "shimmer" : ""}`} />
         <div className="grid gap-4 p-4 lg:grid-cols-2">
           <div>
-            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">Plan — blueprint spec</h3>
+            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">{d.factory.planSpec}</h3>
             <pre className="overflow-x-auto font-mono text-xs leading-relaxed">
               {PLAN_LINES(bp).slice(0, phase === "plan" ? planLine : PLAN_LINES(bp).length).map((l, i) => (
                 <div key={i} className="reveal">{l}</div>
@@ -268,7 +259,7 @@ export function Factory() {
             </pre>
           </div>
           <div className="min-w-0">
-            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">blueprint.json — the whole app</h3>
+            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">{d.factory.blueprintJson}</h3>
             <pre className="max-h-72 overflow-x-auto font-mono text-[11px] leading-relaxed text-muted">
               {jsonLines.slice(0, jsonShown).map((l, i) => (
                 <div key={i} className={`reveal ${i === 0 ? "text-fg" : ""}`}>{l}</div>
@@ -281,19 +272,19 @@ export function Factory() {
 
       {/* build */}
       <div className="card p-4">
-        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">Build — runtime modules</h3>
+        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">{d.factory.buildModulesTitle}</h3>
         <div className="grid gap-2 sm:grid-cols-3">
-          {BUILD_MODULES.map((m, i) => {
+          {["schema", "seed", "dashboard", "views", "form", "workflow"].map((m, i) => {
             const on = phase !== "plan" && (phase !== "build" || buildStep > i);
             return (
-              <div key={m.name} className={`rounded-lg border p-3 transition-all ${on ? "border-ok/40 bg-ok/5" : "border-line bg-card-2 opacity-50"}`}>
+              <div key={m} className={`rounded-lg border p-3 transition-all ${on ? "border-ok/40 bg-ok/5" : "border-line bg-card-2 opacity-50"}`}>
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <span className={`grid h-4 w-4 place-items-center rounded-full text-[9px] ${on ? "bg-ok/20 text-ok" : "bg-line text-muted"}`}>
                     {on ? "✓" : i + 1}
                   </span>
-                  runtime/{m.name}
+                  runtime/{m}
                 </div>
-                <div className="mt-0.5 pl-6 text-xs text-muted">{m.desc}</div>
+                <div className="mt-0.5 pl-6 text-xs text-muted">{d.factory.modules[i].desc}</div>
               </div>
             );
           })}
@@ -302,7 +293,7 @@ export function Factory() {
 
       {/* test */}
       <div className="card p-4">
-        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">Test — real checks on the blueprint</h3>
+        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">{d.factory.testTitle}</h3>
         <div className="space-y-1.5 font-mono text-xs">
           {CHECKS.map((c, i) => {
             const on = ["build", "plan"].includes(phase) ? false : checkStep > i;
@@ -321,27 +312,27 @@ export function Factory() {
         <div className="reveal space-y-3">
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded-full border border-ok/40 bg-ok/10 px-3 py-1 text-xs font-bold text-ok">
-              SHIPPED — {bp.appName} is live below
+              {d.factory.shipped.replace("{name}", bp.appName)}
             </span>
             {shareUrl ? (
               <a href={shareUrl} className="rounded-lg border border-line px-3 py-1.5 text-xs hover:bg-card-2">
-                Open standalone (shareable URL) ↗
+                {d.factory.openStandalone}
               </a>
             ) : null}
             {shareUrl ? (
               <button type="button" onClick={() => void copyLink()} className="rounded-lg border border-line px-3 py-1.5 text-xs hover:bg-card-2">
-                {copied ? "link copied ✓" : "copy link"}
+                {copied ? d.factory.copied : d.factory.copyLink}
               </button>
             ) : null}
             <button type="button" onClick={remix} className="rounded-lg border border-accent/40 bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent hover:opacity-90">
-              remix this build
+              {d.factory.remix}
             </button>
             <button
               type="button"
               onClick={() => { localStorage.removeItem(storageKeyOf(bp)); location.reload(); }}
               className="text-xs text-muted underline underline-offset-2 hover:text-fg"
             >
-              reset app data
+              {d.factory.resetData}
             </button>
           </div>
           <RuntimeApp bp={bp} />

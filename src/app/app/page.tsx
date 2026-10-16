@@ -4,17 +4,22 @@ import { Nav } from "@/components/nav";
 import { Footer } from "@/components/footer";
 import { AppClient } from "@/components/app-client";
 import { decodeBlueprint } from "@/lib/codec";
+import { getDictionary } from "@/lib/i18n/server";
 
-export const metadata: Metadata = {
-  title: "Built app",
-  description: "A working app built by UangForge, encoded entirely in this URL.",
-  robots: { index: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const d = await getDictionary();
+  return {
+    title: d.meta.titleApp,
+    description: d.meta.descriptionApp,
+    robots: { index: false },
+  };
+}
 
 export default async function AppPage({ searchParams }: { searchParams: Promise<{ bp?: string }> }) {
   const { bp: encoded } = await searchParams;
   const decoded = encoded ? await decodeBlueprint(encoded) : null;
   const bp = decoded ?? null;
+  const d = await getDictionary();
 
   return (
     <>
@@ -31,31 +36,29 @@ export default async function AppPage({ searchParams }: { searchParams: Promise<
                 <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
                   bp.source === "llm" ? "bg-accent-soft text-accent" : "bg-card-2 text-muted"
                 }`}>
-                  {bp.source === "llm" ? "planned by LLM" : "curated template"}
+                  {bp.source === "llm" ? d.factory.plannedByLlm : d.factory.curatedTemplate}
                 </span>
                 <span className="rounded-full border border-ok/40 bg-ok/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-ok">
-                  lives in this URL
+                  {d.appPage.livesInUrl}
                 </span>
                 <Link href="/" className="text-xs text-muted underline underline-offset-2 hover:text-fg">
-                  build your own ↗
+                  {d.appPage.buildYourOwn}
                 </Link>
               </div>
             </div>
             <AppClient bp={bp} />
-            <p className="mt-6 text-xs text-muted">
-              Records persist in your browser only (localStorage). Reset by clearing site data, or
-              share the URL — the whole app is inside the link.
-            </p>
+            <p className="mt-6 text-xs text-muted">{d.appPage.persistenceNote}</p>
           </>
         ) : (
           <div className="card mx-auto max-w-lg p-8 text-center">
-            <h1 className="font-display text-xl font-bold">No build found in this URL</h1>
+            <h1 className="font-display text-xl font-bold">{d.appPage.noBuildTitle}</h1>
             <p className="mt-2 text-sm text-muted">
-              The link should look like <code className="rounded bg-card-2 px-1">/app?bp=…</code>.
-              The blueprint may be malformed — head back to the factory and build a fresh one.
+              {d.appPage.noBuildBodyA}
+              <code className="rounded bg-card-2 px-1">/app?bp=…</code>
+              {d.appPage.noBuildBodyB}
             </p>
             <Link href="/" className="mt-5 inline-block rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white dark:text-[#1a1206]">
-              Go to the factory
+              {d.appPage.goFactory}
             </Link>
           </div>
         )}

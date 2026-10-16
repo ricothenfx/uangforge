@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateBlueprint, llmConfigured } from "@/lib/generate";
 import { getCuratedByPrompt, CURATED, defaultCurated } from "@/lib/curated";
+import { getLocale } from "@/lib/i18n/server";
+import { dictionaries } from "@/lib/i18n/registry";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,23 +29,26 @@ function rateLimited(ip: string): boolean {
 }
 
 export async function POST(req: Request) {
+  const locale = await getLocale();
+  const notes = dictionaries[locale].apiNotes;
+
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??
     "local";
   if (rateLimited(ip)) {
-    return NextResponse.json({ error: "Too many builds from this address — try again in a minute." }, { status: 429 });
+    return NextResponse.json({ error: notes.rateLimited }, { status: 429 });
   }
 
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: notes.invalidJson }, { status: 400 });
   }
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Describe the app in 4-200 characters." }, { status: 400 });
+    return NextResponse.json({ error: notes.promptLength }, { status: 400 });
   }
 
   const prompt = parsed.data.prompt;
@@ -54,7 +59,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       blueprint: curated,
       curatedFallback: true,
-      note: "No LLM endpoint configured — served the nearest curated template. Configure LLM_* to plan from any description.",
+      note: notes.noLlm,
     });
   }
 
@@ -67,7 +72,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     blueprint: curated,
     curatedFallback: true,
-    note: "The planner could not produce a valid blueprint for that description (twice) — served the nearest curated template instead. Nothing fake was shipped.",
+    note: notes.planFailed,
   });
 }
 

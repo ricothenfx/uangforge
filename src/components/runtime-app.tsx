@@ -11,6 +11,8 @@ import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Blueprint, Entity, Field, RecordData } from "@/lib/blueprint";
 import { statusFieldOf } from "@/lib/blueprint";
 import { seedApp, type AppData } from "@/lib/seed";
+import { useI18n } from "@/lib/i18n/provider";
+import { LOCALES_META } from "@/lib/i18n/config";
 
 function formatValue(f: Field, v: RecordData[string]): string {
   if (v === null || v === undefined || v === "") return "—";
@@ -64,6 +66,7 @@ type Toast = { msg: string; undo?: () => void };
 const SEGMENT_COLORS = ["bg-ok", "bg-accent", "bg-warn", "bg-bad", "bg-muted"];
 
 export function RuntimeApp({ bp }: { bp: Blueprint }) {
+  const { dict: d } = useI18n();
   const store = useMemo(() => createAppStore(bp), [bp]);
   const data = useSyncExternalStore(store.subscribe, store.get, store.serverSnapshot);
   const [tab, setTab] = useState(0);
@@ -83,15 +86,15 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
 
   const aggregate = useMemo(() => {
     if (!data) return [];
-    return bp.dashboard.map((d) => {
-      const rows = data[d.entity] ?? [];
-      if (d.agg === "count") return { label: d.label, value: String(rows.length) };
-      const ent = bp.entities.find((e) => e.name === d.entity);
-      const fld = ent?.fields.find((f) => f.name === d.field);
-      const nums = rows.map((r) => Number(r[d.field ?? ""])).filter((n) => !Number.isNaN(n));
-      const raw = d.agg === "sum" ? nums.reduce((a, b) => a + b, 0) : nums.length ? nums.reduce((a, b) => a + b) / nums.length : 0;
+    return bp.dashboard.map((card) => {
+      const rows = data[card.entity] ?? [];
+      if (card.agg === "count") return { label: card.label, value: String(rows.length) };
+      const ent = bp.entities.find((e) => e.name === card.entity);
+      const fld = ent?.fields.find((f) => f.name === card.field);
+      const nums = rows.map((r) => Number(r[card.field ?? ""])).filter((n) => !Number.isNaN(n));
+      const raw = card.agg === "sum" ? nums.reduce((a, b) => a + b, 0) : nums.length ? nums.reduce((a, b) => a + b) / nums.length : 0;
       const value = fld?.type === "currency" ? "$" + Math.round(raw).toLocaleString("en-US") : String(Math.round(raw * 10) / 10);
-      return { label: d.label, value };
+      return { label: card.label, value };
     });
   }, [bp, data]);
 
@@ -144,14 +147,14 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
   }, [data, viewEntity, query, statusFilter, sort, sf]);
 
   if (!data) {
-    return <div className="card p-8 text-center text-muted">Booting runtime…</div>;
+    return <div className="card p-8 text-center text-muted">{d.runtime.booting}</div>;
   }
 
   const createRecord = (e: Entity, record: RecordData) => {
     const prev = data ?? {};
     store.set({ ...prev, [e.name]: [...(prev[e.name] ?? []), record] });
     setForm(null);
-    showToast({ msg: `${e.name} created` });
+    showToast({ msg: d.runtime.created.replace("{name}", e.name) });
   };
 
   const updateRecord = (e: Entity, index: number, record: RecordData) => {
@@ -159,7 +162,7 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
     rows[index] = record;
     store.set({ ...(data ?? {}), [e.name]: rows });
     setForm(null);
-    showToast({ msg: `${e.name} updated` });
+    showToast({ msg: d.runtime.updated.replace("{name}", e.name) });
   };
 
   const deleteRecord = (entityName: string, index: number) => {
@@ -168,7 +171,7 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
     const [removed] = rows.splice(index, 1);
     store.set({ ...(data ?? {}), [entityName]: rows });
     showToast({
-      msg: `${removed[leadEntity.fields[0].name] ?? entityName} deleted`,
+      msg: d.runtime.deleted.replace("{name}", String(removed[leadEntity.fields[0].name] ?? entityName)),
       undo: () => {
         if (snapshot) store.set(snapshot);
         setToast(null);
@@ -177,31 +180,31 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
   };
 
   const decide = (entityName: string, index: number, approve: boolean) => {
-    const wf = bp.workflow!;
+    const workflow = bp.workflow!;
     const e = bp.entities.find((x) => x.name === entityName)!;
-    const sf = statusFieldOf(e);
-    if (!sf) return;
+    const esf = statusFieldOf(e);
+    if (!esf) return;
     const rows = [...(data?.[entityName] ?? [])];
     const row = { ...rows[index] };
-    row[sf.field] = approve ? wf.toStatus : (sf.values.find((v) => v !== wf.fromStatus && v !== wf.toStatus) ?? sf.values[sf.values.length - 1]);
+    row[esf.field] = approve ? workflow.toStatus : (esf.values.find((v) => v !== workflow.fromStatus && v !== workflow.toStatus) ?? esf.values[esf.values.length - 1]);
     rows[index] = row;
     store.set({ ...(data ?? {}), [entityName]: rows });
     setPendingApprove(null);
-    showToast({ msg: `${wf.name} ${approve ? "approved" : "rejected"}` });
+    showToast({ msg: (approve ? d.runtime.wfApproved : d.runtime.wfRejected).replace("{name}", workflow.name) });
   };
 
   const moveCard = (entityName: string, index: number, col: string) => {
     const e = bp.entities.find((x) => x.name === entityName)!;
-    const sf = statusFieldOf(e);
-    if (!sf) return;
+    const esf = statusFieldOf(e);
+    if (!esf) return;
     const rows = [...(data?.[entityName] ?? [])];
     const row = { ...rows[index] };
-    if (row[sf.field] === col) return;
-    row[sf.field] = col;
+    if (row[esf.field] === col) return;
+    row[esf.field] = col;
     rows.splice(index, 1);
     rows.push(row);
     store.set({ ...(data ?? {}), [entityName]: rows });
-    showToast({ msg: `moved to ${col}` });
+    showToast({ msg: d.runtime.movedTo.replace("{col}", col) });
   };
 
   return (
@@ -219,7 +222,7 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
         <div className="grid gap-3 lg:grid-cols-2">
           {breakdown ? (
             <div className="card p-4">
-              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">{leadEntity.name} · status breakdown</div>
+              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">{leadEntity.name} · {d.runtime.statusBreakdown}</div>
               <div className="flex h-2.5 overflow-hidden rounded-full bg-card-2">
                 {breakdown.map((s) =>
                   s.n > 0 ? <div key={s.value} className={`${s.color} h-full`} style={{ width: `${(s.n / Math.max(1, breakdown.reduce((a, b) => a + b.n, 0))) * 100}%` }} title={`${s.value}: ${s.n}`} /> : null,
@@ -272,7 +275,7 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
           onClick={() => setForm({ mode: "create" })}
           className="ml-auto rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:opacity-90 dark:text-[#1a1206]"
         >
-          + New {viewEntity.name}
+          {d.runtime.newEntity.replace("{name}", viewEntity.name)}
         </button>
       </div>
 
@@ -282,7 +285,7 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search ${viewEntity.namePlural}…`}
+              placeholder={d.runtime.searchPlaceholder.replace("{name}", viewEntity.namePlural)}
               className="w-56 rounded-lg border border-line bg-card-2 px-3 py-1.5 text-sm outline-none focus:border-accent"
             />
             {sf ? (
@@ -290,13 +293,15 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="rounded-lg border border-line bg-card-2 px-3 py-1.5 text-sm"
-                aria-label={`Filter ${viewEntity.name} by status`}
+                aria-label={d.runtime.filterByStatus.replace("{name}", viewEntity.name)}
               >
-                <option value="all">all statuses</option>
+                <option value="all">{d.runtime.allStatuses}</option>
                 {sf.values.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             ) : null}
-            <span className="ml-auto text-xs text-muted">{tableRows.length} of {(data[viewEntity.name] ?? []).length} rows</span>
+            <span className="ml-auto text-xs text-muted">
+              {d.runtime.rowsOf.replace("{n}", String(tableRows.length)).replace("{total}", String((data[viewEntity.name] ?? []).length))}
+            </span>
           </div>
           <div className="card overflow-x-auto p-0">
             <table className="w-full text-sm">
@@ -343,18 +348,18 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
                               {wf!.name}
                             </button>
                             {wf!.requiresApproval ? (
-                              <button type="button" aria-label="Reject row" className="ml-1.5 rounded-md border border-bad/40 bg-bad/10 px-2.5 py-1 text-xs text-bad" onClick={() => decide(viewEntity.name, i, false)}>
+                              <button type="button" aria-label={d.runtime.rejectAria} className="ml-1.5 rounded-md border border-bad/40 bg-bad/10 px-2.5 py-1 text-xs text-bad" onClick={() => decide(viewEntity.name, i, false)}>
                                 ✕
                               </button>
                             ) : null}
                           </span>
                         ) : null}
                         <span className="ml-1.5 inline-flex gap-1.5">
-                          <button type="button" aria-label={`Edit ${viewEntity.name} row`} className="rounded-md border border-line px-2 py-1 text-xs text-muted hover:text-fg" onClick={() => setForm({ mode: "edit", index: i })}>
-                            Edit
+                          <button type="button" aria-label={d.runtime.editAria.replace("{name}", viewEntity.name)} className="rounded-md border border-line px-2 py-1 text-xs text-muted hover:text-fg" onClick={() => setForm({ mode: "edit", index: i })}>
+                            {d.runtime.edit}
                           </button>
-                          <button type="button" aria-label={`Delete ${viewEntity.name} row`} className="rounded-md border border-bad/40 bg-bad/10 px-2 py-1 text-xs text-bad" onClick={() => deleteRecord(viewEntity.name, i)}>
-                            Delete
+                          <button type="button" aria-label={d.runtime.deleteAria.replace("{name}", viewEntity.name)} className="rounded-md border border-bad/40 bg-bad/10 px-2 py-1 text-xs text-bad" onClick={() => deleteRecord(viewEntity.name, i)}>
+                            {d.runtime.delete}
                           </button>
                         </span>
                       </td>
@@ -362,7 +367,7 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
                   );
                 })}
                 {tableRows.length === 0 ? (
-                  <tr><td colSpan={viewEntity.fields.length + 1} className="px-4 py-8 text-center text-muted">No {viewEntity.namePlural} match.</td></tr>
+                  <tr><td colSpan={viewEntity.fields.length + 1} className="px-4 py-8 text-center text-muted">{d.runtime.noMatch.replace("{name}", viewEntity.namePlural)}</td></tr>
                 ) : null}
               </tbody>
             </table>
@@ -377,7 +382,7 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
       {form ? (
         <RecordForm
           entity={viewEntity}
-          title={form.mode === "create" ? `New ${viewEntity.name}` : `Edit ${viewEntity.name}`}
+          title={form.mode === "create" ? d.runtime.newEntity.replace("{name}", viewEntity.name) : `${d.runtime.edit} ${viewEntity.name}`}
           initial={form.mode === "edit" ? data[viewEntity.name]?.[form.index] : undefined}
           onCancel={() => setForm(null)}
           onSave={(r) => (form.mode === "edit" ? updateRecord(viewEntity, form.index, r) : createRecord(viewEntity, r))}
@@ -387,9 +392,9 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
       {pendingApprove ? (
         <ConfirmDialog
           title={wf!.name}
-          body={`Human-in-the-loop check: move this ${pendingApprove.entity} from "${wf!.fromStatus}" to "${wf!.toStatus}"?`}
-          confirmLabel="Approve"
-          cancelLabel="Cancel"
+          body={d.runtime.confirmBody.replace("{entity}", pendingApprove.entity).replace("{from}", wf!.fromStatus).replace("{to}", wf!.toStatus)}
+          confirmLabel={d.runtime.approve}
+          cancelLabel={d.runtime.cancel}
           onConfirm={() => decide(pendingApprove.entity, pendingApprove.index, true)}
           onCancel={() => setPendingApprove(null)}
         />
@@ -400,7 +405,7 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
           {toast.msg}
           {toast.undo ? (
             <button type="button" className="font-semibold underline underline-offset-2" onClick={toast.undo}>
-              Undo
+              {d.runtime.undo}
             </button>
           ) : null}
         </div>
@@ -410,6 +415,7 @@ export function RuntimeApp({ bp }: { bp: Blueprint }) {
 }
 
 function BoardView({ entity, rows, onMove }: { entity: Entity; rows: RecordData[]; onMove: (index: number, col: string) => void }) {
+  const { dict: d } = useI18n();
   const sf = statusFieldOf(entity);
   const cols = sf?.values ?? ["open", "done"];
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -447,7 +453,7 @@ function BoardView({ entity, rows, onMove }: { entity: Entity; rows: RecordData[
                   setOverCol(null);
                 }}
                 className={`mb-2 rounded-lg border border-line bg-card-2 p-2.5 text-sm transition-opacity ${dragIdx === i ? "opacity-40" : ""} cursor-grab active:cursor-grabbing`}
-                title="Drag to another column to change status"
+                title={d.runtime.dragTitle}
               >
                 <div className="font-medium">{formatValue(entity.fields[0], r[entity.fields[0].name])}</div>
                 <div className="mt-0.5 text-xs text-muted">
@@ -467,21 +473,22 @@ function pad2(n: number): string {
 }
 
 function CalendarView({ entity, rows }: { entity: Entity; rows: RecordData[] }) {
+  const { dict: d, locale } = useI18n();
   const dateField = entity.fields.find((f) => f.type === "date")?.name;
   const now = new Date();
   const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const first = new Date(ym.y, ym.m, 1).getDay();
   const days = new Date(ym.y, ym.m + 1, 0).getDate();
-  const label = new Date(ym.y, ym.m, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const label = new Date(ym.y, ym.m, 1).toLocaleDateString(LOCALES_META[locale].bcp47, { month: "long", year: "numeric" });
   const shift = (delta: number) => setYm(({ y, m }) => {
-    const d = new Date(y, m + delta, 1);
-    return { y: d.getFullYear(), m: d.getMonth() };
+    const dd = new Date(y, m + delta, 1);
+    return { y: dd.getFullYear(), m: dd.getMonth() };
   });
   const byDate = new Map<string, string[]>();
   if (dateField) {
     for (const r of rows) {
-      const d = String(r[dateField] ?? "").slice(0, 10);
-      if (d) byDate.set(d, [...(byDate.get(d) ?? []), formatValue(entity.fields[0], r[entity.fields[0].name])]);
+      const dd = String(r[dateField] ?? "").slice(0, 10);
+      if (dd) byDate.set(dd, [...(byDate.get(dd) ?? []), formatValue(entity.fields[0], r[entity.fields[0].name])]);
     }
   }
   return (
@@ -489,20 +496,20 @@ function CalendarView({ entity, rows }: { entity: Entity; rows: RecordData[] }) 
       <div className="mb-2 flex items-center gap-2">
         <div className="text-sm font-medium">{label}</div>
         <div className="ml-auto flex gap-1">
-          <button type="button" aria-label="Previous month" onClick={() => shift(-1)} className="rounded-md border border-line px-2 py-0.5 text-xs text-muted hover:text-fg">
+          <button type="button" aria-label={d.runtime.prevMonth} onClick={() => shift(-1)} className="rounded-md border border-line px-2 py-0.5 text-xs text-muted hover:text-fg">
             ←
           </button>
-          <button type="button" aria-label="Current month" onClick={() => setYm({ y: now.getFullYear(), m: now.getMonth() })} className="rounded-md border border-line px-2 py-0.5 text-xs text-muted hover:text-fg">
-            today
+          <button type="button" aria-label={d.runtime.currentMonth} onClick={() => setYm({ y: now.getFullYear(), m: now.getMonth() })} className="rounded-md border border-line px-2 py-0.5 text-xs text-muted hover:text-fg">
+            {d.runtime.today}
           </button>
-          <button type="button" aria-label="Next month" onClick={() => shift(1)} className="rounded-md border border-line px-2 py-0.5 text-xs text-muted hover:text-fg">
+          <button type="button" aria-label={d.runtime.nextMonth} onClick={() => shift(1)} className="rounded-md border border-line px-2 py-0.5 text-xs text-muted hover:text-fg">
             →
           </button>
         </div>
       </div>
       <div className="grid grid-cols-7 gap-1.5">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-          <div key={d} className="pb-1 text-center text-[10px] uppercase tracking-wider text-muted">{d}</div>
+        {d.runtime.weekdays.map((wd) => (
+          <div key={wd} className="pb-1 text-center text-[10px] uppercase tracking-wider text-muted">{wd}</div>
         ))}
         {Array.from({ length: first }).map((_, i) => <div key={`x${i}`} />)}
         {Array.from({ length: days }, (_, i) => {
@@ -530,6 +537,7 @@ function RecordForm({ entity, title, initial, onSave, onCancel }: {
   onSave: (r: RecordData) => void;
   onCancel: () => void;
 }) {
+  const { dict: d } = useI18n();
   const [values, setValues] = useState<RecordData>(initial ?? {});
   const submit = () => {
     const r: RecordData = {};
@@ -572,10 +580,10 @@ function RecordForm({ entity, title, initial, onSave, onCancel }: {
         </div>
         <div className="mt-4 flex gap-2">
           <button type="button" onClick={submit} className="flex-1 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white dark:text-[#1a1206]">
-            Save {entity.name}
+            {d.runtime.saveEntity.replace("{name}", entity.name)}
           </button>
           <button type="button" onClick={onCancel} className="rounded-lg border border-line px-4 py-2 text-sm">
-            Cancel
+            {d.runtime.cancel}
           </button>
         </div>
       </div>

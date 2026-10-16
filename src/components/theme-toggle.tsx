@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useI18n } from "@/lib/i18n/provider";
 
 export function ThemeToggle() {
+  const { dict: d } = useI18n();
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
@@ -27,7 +29,7 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggle}
-      aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+      aria-label={dark ? d.themeToggle.ariaLight : d.themeToggle.ariaDark}
       title={dark ? "Light mode" : "Dark mode"}
       className="relative h-9 w-9 rounded-lg border border-line bg-card hover:bg-card-2 transition-colors grid place-items-center"
     >
@@ -50,7 +52,7 @@ export function ThemeToggle() {
           </>
         )}
       </svg>
-      <span className="sr-only">Toggle theme</span>
+      <span className="sr-only">{d.themeToggle.srOnly}</span>
     </button>
   );
 }
