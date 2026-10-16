@@ -40,6 +40,7 @@ function buildPrompt(userPrompt: string, isRepair: boolean, lastRaw?: string): s
     `You design small business apps for a factory that builds them automatically. ` +
     `Respond ONLY with minified JSON exactly matching this shape:\n${SHAPE}\n\n` +
     `STRICT RULES:\n` +
+    `- the example above only demonstrates the JSON SHAPE — NEVER copy it: appName, entities, fields, statusValues and samples MUST be invented for the user's description below, not for the example\n` +
     `- field.type must be one of: ${FIELD_TYPES.join(" | ")} (select fields need "options")\n` +
     `- view.type must be one of: ${VIEW_TYPES.join(" | ")}\n` +
     `- dashboard.agg must be one of: ${AGGREGATIONS.join(" | ")}\n` +
@@ -47,11 +48,20 @@ function buildPrompt(userPrompt: string, isRepair: boolean, lastRaw?: string): s
     `- the main entity needs a select "status" field plus matching "statusField"/"statusValues"\n` +
     `- include exactly one approval-style workflow: fromStatus and toStatus MUST be different values from statusValues\n` +
     `- each entity SHOULD include 8-14 "samples": realistic example records for that business. Every key must be an existing field name; values must match the field type (plain numbers, "YYYY-MM-DD" dates); select/status values MUST come from that field's options; no invented keys; vary the status values\n` +
+    `- the description may be in any language — detect its domain and build for THAT domain; appName may use the user's language\n` +
     `- tagline max 90 chars, plain text\n` +
     (isRepair
       ? `\nYour previous output violated the rules. Fix it. Respond ONLY with corrected minified JSON.\n\nINVALID PREVIOUS OUTPUT:\n${(lastRaw ?? "").slice(0, 1200)}\n\n`
       : `\nBuild this app: ${userPrompt}\n`)
   );
+}
+
+/** The SHAPE example — a schema-valid clone of it means the model anchored, not planned. */
+const EXAMPLE = { appName: "leave tracker", tagline: "track time-off requests with approval" };
+
+function isExampleClone(bp: Blueprint, userPrompt: string): boolean {
+  const clone = bp.appName.toLowerCase() === EXAMPLE.appName && bp.tagline.toLowerCase() === EXAMPLE.tagline;
+  return clone && !/leave|time.?off|vacation|cuti|izin/.test(userPrompt.toLowerCase());
 }
 
 export async function generateBlueprint(userPrompt: string): Promise<Blueprint | null> {
@@ -63,6 +73,7 @@ export async function generateBlueprint(userPrompt: string): Promise<Blueprint |
         generateText({
           model: model(),
           maxOutputTokens: 2600,
+          temperature: 0.4,
           prompt: buildPrompt(userPrompt, attempt > 1, lastRaw),
         }),
         30_000,
@@ -70,7 +81,7 @@ export async function generateBlueprint(userPrompt: string): Promise<Blueprint |
       lastRaw = text;
       const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
       const parsed = BlueprintSchema.safeParse(JSON.parse(cleaned));
-      if (parsed.success) {
+      if (parsed.success && !isExampleClone(parsed.data, userPrompt)) {
         return { ...parsed.data, source: "llm", prompt: userPrompt.slice(0, 200) };
       }
     } catch {
