@@ -16,6 +16,8 @@ export const FieldSchema = z.object({
   options: z.array(z.string().min(1).max(24)).max(6).optional(),
 });
 
+export type RecordData = Record<string, string | number | boolean>;
+
 export const EntitySchema = z
   .object({
     name: z.string().min(2).max(30),
@@ -23,6 +25,8 @@ export const EntitySchema = z
     fields: z.array(FieldSchema).min(2).max(7),
     statusField: z.string().max(24).optional(),
     statusValues: z.array(z.string().min(1).max(24)).min(2).max(5).optional(),
+    // realistic example records — the LLM fills these, normalization trims them
+    samples: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]))).max(24).optional(),
   })
   .superRefine((e, ctx) => {
     if (e.statusField) {
@@ -109,4 +113,56 @@ export function statusFieldOf(e: Entity): { field: string; values: string[] } | 
   if (!f) return null;
   const values = e.statusValues ?? f.options ?? [];
   return values.length ? { field: e.statusField, values } : null;
+}
+
+/** Max sample rows that survive normalization (schema allows 24; we keep 20). */
+export const SAMPLES_CAP = 20;
+
+function coerceValue(f: Field, v: unknown): RecordData[string] | undefined {
+  if (f.type === "number" || f.type === "currency") {
+    const n = typeof v === "number" ? v : typeof v === "string" ? Number(v.trim()) : NaN;
+    return Number.isFinite(n) ? n : undefined;
+  }
+  if (f.type === "boolean") {
+    if (typeof v === "boolean") return v;
+    if (v === "true") return true;
+    if (v === "false") return false;
+    return undefined;
+  }
+  if (f.type === "select") {
+    const s = String(v);
+    return (f.options ?? []).includes(s) ? s : undefined;
+  }
+  if (f.type === "date") {
+    const s = String(v);
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined;
+  }
+  const s = String(v).trim();
+  return s.length ? s.slice(0, 80) : undefined;
+}
+
+/**
+ * Lenient normalization for LLM sample rows: unknown keys and type-mismatched
+ * values are dropped (never trusted), rows with no valid field remain dropped.
+ * What survives is type-safe and merges cleanly with generated seed rows.
+ */
+export function normalizeSamples(e: Entity): RecordData[] {
+  const byName = new Map(e.fields.map((f) => [f.name, f]));
+  const out: RecordData[] = [];
+  for (const raw of e.samples ?? []) {
+    if (!raw || typeof raw !== "object") continue;
+    const row: RecordData = {};
+    let used = 0;
+    for (const [k, v] of Object.entries(raw)) {
+      const f = byName.get(k);
+      if (!f) continue;
+      const c = coerceValue(f, v);
+      if (c === undefined) continue;
+      row[k] = c;
+      used += 1;
+    }
+    if (used > 0) out.push(row);
+    if (out.length >= SAMPLES_CAP) break;
+  }
+  return out;
 }

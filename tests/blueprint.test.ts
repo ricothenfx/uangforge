@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { BlueprintSchema, type Blueprint } from "@/lib/blueprint";
+import { BlueprintSchema, normalizeSamples, type Blueprint } from "@/lib/blueprint";
 import { seedApp } from "@/lib/seed";
-import { CURATED } from "@/lib/curated";
+import { CURATED, getCuratedByPrompt } from "@/lib/curated";
 import curatedJson from "@/lib/curated.json";
 
 const validBp = (): Blueprint => ({
@@ -69,6 +69,37 @@ describe("BlueprintSchema", () => {
     (bp.entities[0].fields[0] as unknown as { type: string }).type = "quantum";
     expect(BlueprintSchema.safeParse(bp).success).toBe(false);
   });
+
+  it("accepts well-formed LLM samples on an entity", () => {
+    const bp = validBp();
+    bp.entities[0].samples = [{ employee: "Maya Kusuma", days: 3, status: "pending" }];
+    expect(BlueprintSchema.safeParse(bp).success).toBe(true);
+  });
+});
+
+describe("normalizeSamples", () => {
+  it("drops unknown keys, bad select values and wrong types, coerces numeric strings", () => {
+    const bp = validBp();
+    const [e] = bp.entities;
+    e.samples = [
+      { employee: "Maya Kusuma", days: "3", status: "pending", hacker: "<script>" }, // days coerced, hacker dropped
+      { employee: "Kenji Tanaka", days: "many", status: "vanished" }, // bad value keys dropped
+      "not-an-object" as unknown as Record<string, string>,
+      { status: "nope" }, // zero valid fields → row dropped
+    ];
+    const out = normalizeSamples(e);
+    expect(out).toEqual([
+      { employee: "Maya Kusuma", days: 3, status: "pending" },
+      { employee: "Kenji Tanaka" },
+    ]);
+  });
+
+  it("caps the number of surviving rows", () => {
+    const bp = validBp();
+    const [e] = bp.entities;
+    e.samples = Array.from({ length: 30 }, (_, i) => ({ employee: `Person ${i}` }));
+    expect(normalizeSamples(e).length).toBeLessThanOrEqual(20);
+  });
 });
 
 describe("curated library", () => {
@@ -88,13 +119,24 @@ describe("curated library", () => {
   it("matches prompts to scenarios", () => {
     expect(CURATED.find((bp) => bp.appName === "Leave Tracker")).toBeTruthy();
   });
+
+  it("matches prompts despite plural forms (no LLM needed)", () => {
+    expect(getCuratedByPrompt("an app to track bugs and their fix statuses")?.appName).toBe("Bug Tracker");
+  });
 });
 
 describe("seedApp", () => {
-  it("generates records for every entity", () => {
+  it("generates a rich table for every entity", () => {
     const data = seedApp(validBp());
     expect(Object.keys(data)).toEqual(["request"]);
-    expect(data.request.length).toBeGreaterThanOrEqual(3);
+    expect(data.request.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("uses realistic pool values, not 'sample N'", () => {
+    const data = seedApp(validBp());
+    for (const row of data.request) {
+      expect(String(row["employee"])).not.toMatch(/sample/i);
+    }
   });
 
   it("puts the workflow fromStatus in the first record so approval is try-able", () => {
@@ -103,7 +145,7 @@ describe("seedApp", () => {
     expect(data.request[0]["status"]).toBe(bp.workflow!.fromStatus);
   });
 
-  it("is deterministic", () => {
+  it("is deterministic within a run", () => {
     expect(seedApp(validBp())).toEqual(seedApp(validBp()));
   });
 
@@ -111,5 +153,32 @@ describe("seedApp", () => {
     const data = seedApp(validBp());
     const statuses = data.request.map((r) => r["status"]);
     expect(new Set(statuses).size).toBeGreaterThan(1);
+  });
+
+  it("merges LLM samples in front of generated rows", () => {
+    const bp = validBp();
+    bp.entities[0].samples = [
+      { employee: "Maya Kusuma", type: "annual", days: 3, status: "approved" },
+      { employee: "Kenji Tanaka", type: "sick", days: 1, status: "approved" },
+    ];
+    const data = seedApp(bp);
+    const employees = data.request.map((r) => String(r["employee"]));
+    expect(employees).toContain("Maya Kusuma");
+    expect(employees).toContain("Kenji Tanaka");
+    expect(data.request.length).toBeGreaterThanOrEqual(6);
+    expect(data.request[0]["status"]).toBe(bp.workflow!.fromStatus);
+  });
+
+  it("produces dates near today so the calendar is alive", () => {
+    const bp = validBp();
+    bp.entities[0].fields.push({ name: "startDate", type: "date", required: true });
+    const data = seedApp(bp);
+    const today = new Date();
+    for (const row of data.request) {
+      const d = new Date(String(row["startDate"]));
+      expect(Number.isNaN(d.getTime())).toBe(false);
+      const diffDays = Math.abs(d.getTime() - today.getTime()) / 86_400_000;
+      expect(diffDays).toBeLessThanOrEqual(13);
+    }
   });
 });

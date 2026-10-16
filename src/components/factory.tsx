@@ -6,11 +6,13 @@
  * the TEST stage runs real validation checks against the blueprint, and the
  * SHIP stage mounts a working app, not a screenshot.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { encodeBlueprint } from "@/lib/codec";
 import type { Blueprint } from "@/lib/blueprint";
+import { normalizeSamples } from "@/lib/blueprint";
+import { seedApp } from "@/lib/seed";
 import { CURATED } from "@/lib/curated";
-import { RuntimeApp } from "./runtime-app";
+import { storageKeyOf, RuntimeApp } from "./runtime-app";
 
 type Phase = "pick" | "plan" | "build" | "test" | "ship";
 type Check = { label: string; run: (bp: Blueprint) => boolean };
@@ -21,24 +23,42 @@ const CHECKS: Check[] = [
   { label: "views: renderable against entities", run: (bp) => bp.views.every((v) => bp.entities.some((e) => e.name === v.entity)) },
   { label: "dashboard: aggregations resolvable", run: (bp) => bp.dashboard.every((d) => bp.entities.some((e) => e.name === d.entity)) },
   { label: "workflow: approval path exists", run: (bp) => !bp.workflow || bp.workflow.fromStatus !== bp.workflow.toStatus },
-  { label: "seed: demo data generated", run: (bp) => bp.entities.length > 0 },
+  { label: "samples: LLM rows type-checked", run: (bp) => bp.entities.every((e) => !e.samples?.length || normalizeSamples(e).length > 0) },
+  { label: "seed: realistic demo data generated", run: (bp) => Object.values(seedApp(bp)).every((r) => r.length >= 8) },
 ];
 
 const PLAN_LINES = (bp: Blueprint): string[] => [
   `app        ${bp.appName}`,
   `goal       ${bp.tagline}`,
-  ...bp.entities.map((e) => `entity     ${e.name} (${e.namePlural}) — ${e.fields.map((f) => `${f.name}:${f.type}`).join(", ")}`),
+  ...bp.entities.map((e) => `entity     ${e.name} (${e.namePlural}) — ${e.fields.map((f) => `${f.name}:${f.type}`).join(", ")}${e.samples?.length ? ` +${e.samples.length} sample rows` : ""}`),
   ...bp.views.map((v) => `view       ${v.entity} as ${v.type}`),
   ...bp.dashboard.map((d) => `metric     ${d.label} = ${d.agg}(${d.entity}${d.field ? "." + d.field : ""})`),
   ...(bp.workflow ? [`workflow   ${bp.workflow.name}: ${bp.workflow.fromStatus} → ${bp.workflow.toStatus}${bp.workflow.requiresApproval ? " (human approval)" : ""}`] : []),
 ];
 
+/** JSON view of the blueprint; long sample lists are truncated for display. */
+function blueprintJsonLines(bp: Blueprint): string[] {
+  const trimmed: Blueprint = {
+    ...bp,
+    prompt: undefined,
+    entities: bp.entities.map((e) => {
+      const s = e.samples ?? [];
+      if (s.length <= 2) return e;
+      return {
+        ...e,
+        samples: [...s.slice(0, 2), { truncated: `… +${s.length - 2} more sample rows` }] as typeof e.samples,
+      };
+    }),
+  };
+  return JSON.stringify(trimmed, null, 2).split("\n");
+}
+
 const BUILD_MODULES = [
   { name: "schema", desc: "entity + field definitions" },
-  { name: "seed", desc: "deterministic demo data" },
-  { name: "dashboard", desc: "count / sum / avg cards" },
+  { name: "seed", desc: "realistic demo rows, LLM samples merged" },
+  { name: "dashboard", desc: "count / sum / avg cards + breakdown" },
   { name: "views", desc: "table · board · calendar" },
-  { name: "form", desc: "create-record modal" },
+  { name: "form", desc: "create / edit record modal" },
   { name: "workflow", desc: "approval gate" },
 ];
 
@@ -51,6 +71,7 @@ export function Factory() {
   const [checkStep, setCheckStep] = useState(0);
   const [fallbackNote, setFallbackNote] = useState<string | null>(null);
   const [sharePath, setSharePath] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -118,6 +139,28 @@ export function Factory() {
   }, [startTheater]);
 
   const shareUrl = sharePath;
+  const jsonLines = useMemo(() => (bp ? blueprintJsonLines(bp) : []), [bp]);
+  const planTotal = bp ? PLAN_LINES(bp).length : 1;
+  const jsonShown = phase === "plan" ? Math.min(jsonLines.length, Math.ceil((planLine / Math.max(1, planTotal)) * jsonLines.length)) : jsonLines.length;
+
+  const remix = () => {
+    const seed = bp?.prompt || (bp ? `${bp.appName} — ${bp.tagline}` : "");
+    setPrompt(seed.slice(0, 200));
+    clearTimers();
+    setPhase("pick");
+    setBp(null);
+  };
+
+  const copyLink = async () => {
+    if (!sharePath) return;
+    try {
+      await navigator.clipboard.writeText(`${location.origin}${sharePath}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
 
   if (phase === "pick") {
     return (
@@ -215,13 +258,24 @@ export function Factory() {
       {/* plan */}
       <div className={`card overflow-hidden p-0 transition-opacity ${phase === "plan" ? "" : "opacity-75"}`}>
         <div className={`h-1 ${phase === "plan" ? "shimmer" : ""}`} />
-        <div className="p-4">
-          <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">Plan — blueprint spec</h3>
-          <pre className="overflow-x-auto font-mono text-xs leading-relaxed">
-            {PLAN_LINES(bp).slice(0, phase === "plan" ? planLine : PLAN_LINES(bp).length).map((l, i) => (
-              <div key={i} className="reveal">{l}</div>
-            ))}
-          </pre>
+        <div className="grid gap-4 p-4 lg:grid-cols-2">
+          <div>
+            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">Plan — blueprint spec</h3>
+            <pre className="overflow-x-auto font-mono text-xs leading-relaxed">
+              {PLAN_LINES(bp).slice(0, phase === "plan" ? planLine : PLAN_LINES(bp).length).map((l, i) => (
+                <div key={i} className="reveal">{l}</div>
+              ))}
+            </pre>
+          </div>
+          <div className="min-w-0">
+            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">blueprint.json — the whole app</h3>
+            <pre className="max-h-72 overflow-x-auto font-mono text-[11px] leading-relaxed text-muted">
+              {jsonLines.slice(0, jsonShown).map((l, i) => (
+                <div key={i} className={`reveal ${i === 0 ? "text-fg" : ""}`}>{l}</div>
+              ))}
+              {jsonShown < jsonLines.length ? <div className="text-muted">…</div> : null}
+            </pre>
+          </div>
         </div>
       </div>
 
@@ -274,9 +328,17 @@ export function Factory() {
                 Open standalone (shareable URL) ↗
               </a>
             ) : null}
+            {shareUrl ? (
+              <button type="button" onClick={() => void copyLink()} className="rounded-lg border border-line px-3 py-1.5 text-xs hover:bg-card-2">
+                {copied ? "link copied ✓" : "copy link"}
+              </button>
+            ) : null}
+            <button type="button" onClick={remix} className="rounded-lg border border-accent/40 bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent hover:opacity-90">
+              remix this build
+            </button>
             <button
               type="button"
-              onClick={() => { localStorage.removeItem(`uangforge:${bp.appName}:${bp.entities.map((e) => e.name).join("+")}`); location.reload(); }}
+              onClick={() => { localStorage.removeItem(storageKeyOf(bp)); location.reload(); }}
               className="text-xs text-muted underline underline-offset-2 hover:text-fg"
             >
               reset app data

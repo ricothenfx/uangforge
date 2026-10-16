@@ -25,6 +25,18 @@ describe("blueprint codec", () => {
     expect(enc.length).toBeLessThan(2000);
   });
 
+  it("round-trips a samples-bearing blueprint (LLM demo data survives sharing)", async () => {
+    const withSamples: Blueprint = {
+      ...bp,
+      entities: bp.entities.map((e, i) => ({
+        ...e,
+        samples: i === 0 ? Array.from({ length: 12 }, (_, j) => ({ employee: `Person ${j}`, days: j + 1, status: "pending" })) : e.samples,
+      })),
+    };
+    const dec = await decodeBlueprint(await encodeBlueprint(withSamples));
+    expect(dec?.entities[0].samples).toEqual(withSamples.entities[0].samples);
+  });
+
   it("returns null for garbage input", async () => {
     expect(await decodeBlueprint("not-a-blueprint!!!")).toBeNull();
     expect(await decodeBlueprint("")).toBeNull();

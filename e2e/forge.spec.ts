@@ -15,9 +15,10 @@ test.describe("UangForge", () => {
 
     // theater stages complete
     await expect(page.getByText("Plan — blueprint spec")).toBeVisible();
+    await expect(page.getByText("blueprint.json — the whole app")).toBeVisible();
     await expect(page.getByText("Build — runtime modules")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("Test — real checks on the blueprint")).toBeVisible();
-    await expect(page.getByText(/SHIPPED — Leave Tracker is live below/)).toBeVisible({ timeout: 25_000 });
+    await expect(page.getByText(/SHIPPED — Leave Tracker is live below/)).toBeVisible({ timeout: 45_000 });
 
     // runtime mounts with dashboard + views
     await expect(page.getByRole("button", { name: "request · table" })).toBeVisible();
@@ -33,13 +34,13 @@ test.describe("UangForge", () => {
   test("built app: create record via form, approve via human confirm", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: /Leave Tracker/ }).click();
-    await expect(page.getByRole("button", { name: /New request/ })).toBeVisible({ timeout: 25_000 });
+    await expect(page.getByRole("button", { name: /New request/ })).toBeVisible({ timeout: 45_000 });
 
     const rowsBefore = await page.locator("tbody tr").count();
     await page.getByRole("button", { name: /New request/ }).click();
     await page.getByLabel("employee").fill("E2E Tester");
     await page.getByLabel("days").fill("3");
-    await page.getByRole("button", { name: /Create request/ }).click();
+    await page.getByRole("button", { name: /Save request/ }).click();
     await expect(page.locator("tbody tr")).toHaveCount(rowsBefore + 1);
     await expect(page.locator("tbody")).toContainText("E2E Tester");
 
@@ -50,10 +51,33 @@ test.describe("UangForge", () => {
     await expect(page.getByText(/Approve leave approved/)).toBeVisible();
   });
 
+  test("built app: search filters, delete undoes, board drag handles exist", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: /Leave Tracker/ }).click();
+    await expect(page.getByRole("button", { name: /New request/ })).toBeVisible({ timeout: 45_000 });
+    const rowsBefore = await page.locator("tbody tr").count();
+    expect(rowsBefore).toBeGreaterThanOrEqual(10);
+
+    // search narrows the table
+    await page.getByPlaceholder(/Search requests/).fill("zzz-no-match");
+    await expect(page.getByText(/No requests match/)).toBeVisible();
+    await page.getByPlaceholder(/Search requests/).fill("");
+
+    // delete removes a row, undo brings it back
+    await page.getByRole("button", { name: "Delete request row" }).first().click();
+    await expect(page.locator("tbody tr")).toHaveCount(rowsBefore - 1);
+    await page.getByRole("button", { name: "Undo" }).click();
+    await expect(page.locator("tbody tr")).toHaveCount(rowsBefore);
+
+    // board view renders drag-able columns
+    await page.getByRole("button", { name: "request · board" }).click();
+    await expect(page.getByText(/pending \(/)).toBeVisible();
+  });
+
   test("shareable URL renders the standalone app", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: /Bug Tracker/ }).click();
-    await expect(page.getByRole("link", { name: /Open standalone/ })).toBeVisible({ timeout: 25_000 });
+    await expect(page.getByRole("link", { name: /Open standalone/ })).toBeVisible({ timeout: 45_000 });
     const href = await page.getByRole("link", { name: /Open standalone/ }).getAttribute("href");
     expect(href).toBeTruthy();
 

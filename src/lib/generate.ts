@@ -33,7 +33,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error("llm timeout")), ms))]);
 }
 
-const SHAPE = `{"appName":"Leave Tracker","tagline":"Track time-off requests with approval","entities":[{"name":"request","namePlural":"requests","fields":[{"name":"employee","type":"text","required":true},{"name":"type","type":"select","required":true,"options":["annual","sick","unpaid"]},{"name":"days","type":"number","required":true},{"name":"status","type":"select","required":true,"options":["pending","approved","rejected"]}],"statusField":"status","statusValues":["pending","approved","rejected"]}],"views":[{"entity":"request","type":"table"},{"entity":"request","type":"board"}],"dashboard":[{"label":"Pending requests","entity":"request","field":"status","agg":"count"},{"label":"Total days requested","entity":"request","field":"days","agg":"sum"}],"workflow":{"name":"Approve leave","entity":"request","fromStatus":"pending","toStatus":"approved","requiresApproval":true}}`;
+const SHAPE = `{"appName":"Leave Tracker","tagline":"Track time-off requests with approval","entities":[{"name":"request","namePlural":"requests","fields":[{"name":"employee","type":"text","required":true},{"name":"type","type":"select","required":true,"options":["annual","sick","unpaid"]},{"name":"days","type":"number","required":true},{"name":"status","type":"select","required":true,"options":["pending","approved","rejected"]}],"statusField":"status","statusValues":["pending","approved","rejected"],"samples":[{"employee":"Maya Kusuma","type":"annual","days":3,"status":"pending"},{"employee":"Kenji Tanaka","type":"sick","days":1,"status":"approved"}]}],"views":[{"entity":"request","type":"table"},{"entity":"request","type":"board"}],"dashboard":[{"label":"Pending requests","entity":"request","field":"status","agg":"count"},{"label":"Total days requested","entity":"request","field":"days","agg":"sum"}],"workflow":{"name":"Approve leave","entity":"request","fromStatus":"pending","toStatus":"approved","requiresApproval":true}}`;
 
 function buildPrompt(userPrompt: string, isRepair: boolean, lastRaw?: string): string {
   return (
@@ -46,6 +46,7 @@ function buildPrompt(userPrompt: string, isRepair: boolean, lastRaw?: string): s
     `- max 2 entities, 2-7 fields each; every entity name/view/dashboard/workflow must reference existing entity names\n` +
     `- the main entity needs a select "status" field plus matching "statusField"/"statusValues"\n` +
     `- include exactly one approval-style workflow: fromStatus and toStatus MUST be different values from statusValues\n` +
+    `- each entity SHOULD include 8-14 "samples": realistic example records for that business. Every key must be an existing field name; values must match the field type (plain numbers, "YYYY-MM-DD" dates); select/status values MUST come from that field's options; no invented keys; vary the status values\n` +
     `- tagline max 90 chars, plain text\n` +
     (isRepair
       ? `\nYour previous output violated the rules. Fix it. Respond ONLY with corrected minified JSON.\n\nINVALID PREVIOUS OUTPUT:\n${(lastRaw ?? "").slice(0, 1200)}\n\n`
@@ -61,7 +62,7 @@ export async function generateBlueprint(userPrompt: string): Promise<Blueprint |
       const { text } = await withTimeout(
         generateText({
           model: model(),
-          maxOutputTokens: 1400,
+          maxOutputTokens: 2600,
           prompt: buildPrompt(userPrompt, attempt > 1, lastRaw),
         }),
         30_000,

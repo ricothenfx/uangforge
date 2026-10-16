@@ -18,11 +18,15 @@ only sometimes compiles. UangForge takes the boring-but-real route:
 
 1. **Plan** — the planner LLM fills a strict JSON **blueprint schema** inside a fixed
    constraint space (≤2 entities, 2–7 typed fields, table/board/calendar views,
-   count/sum/avg metrics, one approval workflow). It never writes code — arbitrary output
-   is impossible by construction. Output is validated with zod; a failed attempt gets one
-   repair retry, then a **labeled curated fallback** — never a fabricated result.
-2. **Build** — a deterministic React runtime interprets every blueprint: schema, seed data,
-   dashboard, views, create-form, approval gate.
+   count/sum/avg metrics, one approval workflow, optional realistic `samples` rows).
+   It never writes code — arbitrary output is impossible by construction. Output is
+   validated with zod (samples are normalized: unknown keys and type-mismatched values
+   are dropped); a failed attempt gets one repair retry, then a **labeled curated
+   fallback** — never a fabricated result.
+2. **Build** — a deterministic React runtime interprets every blueprint: schema,
+   realistic seeded demo data (dates relative to today, LLM samples merged in front),
+   dashboard with live status breakdown, searchable/sortable table, drag-and-drop
+   board, navigable calendar, create/edit/delete-with-undo, approval gate.
 3. **Test** — the theater's checks are *real*: they execute actual validations against the
    blueprint (schema bounds, typed fields, renderable views, resolvable aggregations, sane
    workflow). A failing check stops the line.
@@ -63,5 +67,5 @@ with a key, blueprints are planned from any description (labeled "planned by LLM
 ## Limits (stated, not hidden)
 
 The runtime's vocabulary is the constraint space above. Prompts outside it get the nearest
-curated template. Records are per-browser. The calendar view renders October 2026 to match
-the seeded sample data.
+curated template. Records are per-browser. Seeded dates cluster around today so the
+calendar view is always populated, and it is navigable month to month.
