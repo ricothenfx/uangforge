@@ -1,0 +1,616 @@
+[
+ {
+  "appName": "Leave Tracker",
+  "tagline": "Track time-off requests with approval",
+  "prompt": "an app to track employee leave requests with manager approval",
+  "source": "curated",
+  "entities": [
+   {
+    "name": "request",
+    "namePlural": "requests",
+    "fields": [
+     {
+      "name": "employee",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "type",
+      "type": "select",
+      "required": true,
+      "options": [
+       "annual",
+       "sick",
+       "unpaid"
+      ]
+     },
+     {
+      "name": "days",
+      "type": "number",
+      "required": true
+     },
+     {
+      "name": "status",
+      "type": "select",
+      "required": true,
+      "options": [
+       "pending",
+       "approved",
+       "rejected",
+       "canceled"
+      ]
+     }
+    ],
+    "statusField": "status",
+    "statusValues": [
+     "pending",
+     "approved",
+     "rejected",
+     "canceled"
+    ]
+   },
+   {
+    "name": "employee",
+    "namePlural": "employees",
+    "fields": [
+     {
+      "name": "name",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "department",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "email",
+      "type": "text",
+      "required": true
+     }
+    ]
+   }
+  ],
+  "views": [
+   {
+    "entity": "request",
+    "type": "table"
+   },
+   {
+    "entity": "request",
+    "type": "board"
+   }
+  ],
+  "dashboard": [
+   {
+    "label": "Pending requests",
+    "entity": "request",
+    "field": "status",
+    "agg": "count"
+   },
+   {
+    "label": "Total days requested",
+    "entity": "request",
+    "field": "days",
+    "agg": "sum"
+   }
+  ],
+  "workflow": {
+   "name": "Approve leave",
+   "entity": "request",
+   "fromStatus": "pending",
+   "toStatus": "approved",
+   "requiresApproval": true
+  }
+ },
+ {
+  "appName": "Subscription Tracker",
+  "tagline": "Manage your subscriptions easily",
+  "prompt": "a subscription tracker for a small business: services, monthly cost, renewal date",
+  "source": "curated",
+  "entities": [
+   {
+    "name": "subscription",
+    "namePlural": "subscriptions",
+    "fields": [
+     {
+      "name": "service",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "monthlyCost",
+      "type": "currency",
+      "required": true
+     },
+     {
+      "name": "renewalDate",
+      "type": "date",
+      "required": true
+     },
+     {
+      "name": "status",
+      "type": "select",
+      "required": true,
+      "options": [
+       "active",
+       "cancelled",
+       "expired"
+      ]
+     }
+    ],
+    "statusField": "status",
+    "statusValues": [
+     "active",
+     "cancelled",
+     "expired"
+    ]
+   }
+  ],
+  "views": [
+   {
+    "entity": "subscription",
+    "type": "table"
+   },
+   {
+    "entity": "subscription",
+    "type": "board"
+   }
+  ],
+  "dashboard": [
+   {
+    "label": "Active subscriptions",
+    "entity": "subscription",
+    "field": "status",
+    "agg": "count"
+   },
+   {
+    "label": "Total monthly cost",
+    "entity": "subscription",
+    "field": "monthlyCost",
+    "agg": "sum"
+   }
+  ],
+  "workflow": {
+   "name": "Renew subscription",
+   "entity": "subscription",
+   "fromStatus": "cancelled",
+   "toStatus": "active",
+   "requiresApproval": false
+  }
+ },
+ {
+  "appName": "Attendance Checker",
+  "tagline": "Manage workshop check-ins and attendance",
+  "prompt": "an attendance checker for a workshop with check-in status",
+  "source": "curated",
+  "entities": [
+   {
+    "name": "attendance",
+    "namePlural": "attendances",
+    "fields": [
+     {
+      "name": "participant",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "checkInTime",
+      "type": "date",
+      "required": true
+     },
+     {
+      "name": "status",
+      "type": "select",
+      "required": true,
+      "options": [
+       "not checked in",
+       "checked in",
+       "left early"
+      ]
+     }
+    ],
+    "statusField": "status",
+    "statusValues": [
+     "not checked in",
+     "checked in",
+     "left early"
+    ]
+   }
+  ],
+  "views": [
+   {
+    "entity": "attendance",
+    "type": "table"
+   },
+   {
+    "entity": "attendance",
+    "type": "board"
+   }
+  ],
+  "dashboard": [
+   {
+    "label": "Checked-in participants",
+    "entity": "attendance",
+    "field": "status",
+    "agg": "count"
+   },
+   {
+    "label": "Total attendance records",
+    "entity": "attendance",
+    "field": "checkInTime",
+    "agg": "count"
+   }
+  ],
+  "workflow": {
+   "name": "Approve check-in",
+   "entity": "attendance",
+   "fromStatus": "not checked in",
+   "toStatus": "checked in",
+   "requiresApproval": true
+  }
+ },
+ {
+  "appName": "Inventory Tracker",
+  "tagline": "Manage coffee inventory and stock levels",
+  "prompt": "an inventory tracker for a coffee shop: beans, stock level, reorder status",
+  "source": "curated",
+  "entities": [
+   {
+    "name": "product",
+    "namePlural": "products",
+    "fields": [
+     {
+      "name": "name",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "stockLevel",
+      "type": "number",
+      "required": true
+     },
+     {
+      "name": "reorderStatus",
+      "type": "select",
+      "required": true,
+      "options": [
+       "in stock",
+       "low stock",
+       "out of stock"
+      ]
+     },
+     {
+      "name": "supplier",
+      "type": "text",
+      "required": true
+     }
+    ],
+    "statusField": "reorderStatus",
+    "statusValues": [
+     "in stock",
+     "low stock",
+     "out of stock"
+    ]
+   },
+   {
+    "name": "supplier",
+    "namePlural": "suppliers",
+    "fields": [
+     {
+      "name": "name",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "contact",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "rating",
+      "type": "number",
+      "required": true
+     }
+    ]
+   }
+  ],
+  "views": [
+   {
+    "entity": "product",
+    "type": "table"
+   },
+   {
+    "entity": "product",
+    "type": "board"
+   }
+  ],
+  "dashboard": [
+   {
+    "label": "Low stock products",
+    "entity": "product",
+    "field": "reorderStatus",
+    "agg": "count"
+   },
+   {
+    "label": "Total stock level",
+    "entity": "product",
+    "field": "stockLevel",
+    "agg": "sum"
+   }
+  ],
+  "workflow": {
+   "name": "Reorder product",
+   "entity": "product",
+   "fromStatus": "low stock",
+   "toStatus": "in stock",
+   "requiresApproval": true
+  }
+ },
+ {
+  "appName": "Freelance Invoice Tracker",
+  "tagline": "Manage invoices, payments, and client details",
+  "prompt": "a freelance invoice tracker: clients, amounts, payment status",
+  "source": "curated",
+  "entities": [
+   {
+    "name": "invoice",
+    "namePlural": "invoices",
+    "fields": [
+     {
+      "name": "client",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "amount",
+      "type": "currency",
+      "required": true
+     },
+     {
+      "name": "status",
+      "type": "select",
+      "required": true,
+      "options": [
+       "pending",
+       "paid",
+       "late"
+      ]
+     },
+     {
+      "name": "dueDate",
+      "type": "date",
+      "required": true
+     }
+    ],
+    "statusField": "status",
+    "statusValues": [
+     "pending",
+     "paid",
+     "late"
+    ]
+   },
+   {
+    "name": "client",
+    "namePlural": "clients",
+    "fields": [
+     {
+      "name": "name",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "email",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "phone",
+      "type": "text",
+      "required": true
+     }
+    ]
+   }
+  ],
+  "views": [
+   {
+    "entity": "invoice",
+    "type": "table"
+   },
+   {
+    "entity": "invoice",
+    "type": "board"
+   }
+  ],
+  "dashboard": [
+   {
+    "label": "Pending invoices",
+    "entity": "invoice",
+    "field": "status",
+    "agg": "count"
+   },
+   {
+    "label": "Total amount due",
+    "entity": "invoice",
+    "field": "amount",
+    "agg": "sum"
+   }
+  ],
+  "workflow": {
+   "name": "Mark as paid",
+   "entity": "invoice",
+   "fromStatus": "pending",
+   "toStatus": "paid",
+   "requiresApproval": false
+  }
+ },
+ {
+  "appName": "Bug Tracker",
+  "tagline": "Track bugs and their fix statuses",
+  "prompt": "a bug tracker for a tiny dev team: reports, severity, fix status",
+  "source": "curated",
+  "entities": [
+   {
+    "name": "report",
+    "namePlural": "reports",
+    "fields": [
+     {
+      "name": "title",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "reporter",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "severity",
+      "type": "select",
+      "required": true,
+      "options": [
+       "low",
+       "medium",
+       "high"
+      ]
+     },
+     {
+      "name": "status",
+      "type": "select",
+      "required": true,
+      "options": [
+       "open",
+       "in progress",
+       "resolved",
+       "closed"
+      ]
+     },
+     {
+      "name": "created_at",
+      "type": "date",
+      "required": true
+     }
+    ],
+    "statusField": "status",
+    "statusValues": [
+     "open",
+     "in progress",
+     "resolved",
+     "closed"
+    ]
+   }
+  ],
+  "views": [
+   {
+    "entity": "report",
+    "type": "table"
+   },
+   {
+    "entity": "report",
+    "type": "board"
+   }
+  ],
+  "dashboard": [
+   {
+    "label": "Open reports",
+    "entity": "report",
+    "field": "status",
+    "agg": "count"
+   },
+   {
+    "label": "Total resolved reports",
+    "entity": "report",
+    "field": "status",
+    "agg": "count"
+   }
+  ],
+  "workflow": {
+   "name": "Resolve report",
+   "entity": "report",
+   "fromStatus": "open",
+   "toStatus": "resolved",
+   "requiresApproval": false
+  }
+ },
+ {
+  "appName": "Rental Property Tracker",
+  "tagline": "Manage rental bookings with confirmation flow",
+  "prompt": "a rental property booking tracker with confirmation flow",
+  "source": "curated",
+  "entities": [
+   {
+    "name": "booking",
+    "namePlural": "bookings",
+    "fields": [
+     {
+      "name": "tenantName",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "propertyAddress",
+      "type": "text",
+      "required": true
+     },
+     {
+      "name": "rentalAmount",
+      "type": "currency",
+      "required": true
+     },
+     {
+      "name": "bookingDate",
+      "type": "date",
+      "required": true
+     },
+     {
+      "name": "status",
+      "type": "select",
+      "required": true,
+      "options": [
+       "pending",
+       "confirmed",
+       "cancelled"
+      ]
+     }
+    ],
+    "statusField": "status",
+    "statusValues": [
+     "pending",
+     "confirmed",
+     "cancelled"
+    ]
+   }
+  ],
+  "views": [
+   {
+    "entity": "booking",
+    "type": "table"
+   },
+   {
+    "entity": "booking",
+    "type": "calendar"
+   }
+  ],
+  "dashboard": [
+   {
+    "label": "Pending bookings",
+    "entity": "booking",
+    "field": "status",
+    "agg": "count"
+   },
+   {
+    "label": "Total rental income",
+    "entity": "booking",
+    "field": "rentalAmount",
+    "agg": "sum"
+   }
+  ],
+  "workflow": {
+   "name": "Confirm booking",
+   "entity": "booking",
+   "fromStatus": "pending",
+   "toStatus": "confirmed",
+   "requiresApproval": true
+  }
+ }
+]

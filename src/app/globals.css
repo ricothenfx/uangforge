@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f7f6f2;
+  --fg: #16171c;
+  --card: #ffffff;
+  --card-2: #efeee8;
+  --line: #e4e2da;
+  --muted: #5f6673;
+  --brand: #1d4ed8;
+  --brand-fg: #ffffff;
+  --accent: #b45309;
+  --accent-soft: rgba(180, 83, 9, 0.1);
+  --ok: #0e9f6e;
+  --warn: #d97706;
+  --bad: #dc2626;
+  --hl-high: rgba(245, 158, 11, 0.18);
+  --hl-medium: rgba(217, 119, 6, 0.2);
+  --hl-low: rgba(14, 159, 110, 0.16);
+  --paper: #ffffff;
+  --paper-line: #d8d6ce;
+  --code-bg: #ecebe4;
+}
+
+.dark {
+  --bg: #0a0b0f;
+  --fg: #edeff4;
+  --card: #111318;
+  --card-2: #171a21;
+  --line: #242833;
+  --muted: #98a0ae;
+  --brand: #7ea2ff;
+  --brand-fg: #0a0b0f;
+  --accent: #f5b04c;
+  --accent-soft: rgba(245, 176, 76, 0.12);
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --hl-high: rgba(248, 113, 113, 0.26);
+  --hl-medium: rgba(251, 191, 36, 0.24);
+  --hl-low: rgba(52, 211, 153, 0.2);
+  --paper: #1a1d24;
+  --paper-line: #313848;
+  --code-bg: #0d0f14;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-grotesk);
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-card: var(--card);
+  --color-card-2: var(--card-2);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brand-fg: var(--brand-fg);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+.font-display {
+  font-family: var(--font-grotesk), var(--font-inter), system-ui, sans-serif;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent 75%);
+}
+
+/* ---- document viewer ---- */
+.page-wrap {
+  position: relative;
+  box-shadow: 0 2px 24px rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--paper-line);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.hl {
+  position: absolute;
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+  transition: box-shadow 0.3s ease, background-color 0.3s ease;
+}
+:root:not(.dark) .hl {
+  /* in light mode the paper is white; multiply blend makes text stay readable */
+}
+.dark .hl {
+  mix-blend-mode: screen;
+}
+.hl-high { background: var(--hl-high); }
+.hl-medium { background: var(--hl-medium); }
+.hl-low { background: var(--hl-low); }
+
+.hl-pulse {
+  animation: hl-pulse 1.2s ease-out 2;
+}
+@keyframes hl-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(245, 176, 76, 0.85); }
+  70% { box-shadow: 0 0 0 10px rgba(245, 176, 76, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 176, 76, 0); }
+}
+
+/* ---- clause cards ---- */
+.clause-card {
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.clause-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+}
+
+/* ---- reading progress shimmer while analyzing ---- */
+.shimmer {
+  background: linear-gradient(90deg, transparent, var(--accent-soft), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.reveal {
+  animation: reveal 0.5s ease both;
+}
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .shimmer, .reveal, .hl-pulse { animation: none; }
+}

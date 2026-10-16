@@ -1,0 +1,24 @@
+import curatedJson from "./curated.json";
+import type { Blueprint } from "./blueprint";
+
+export const CURATED = curatedJson as unknown as Blueprint[];
+
+export function getCuratedByPrompt(prompt: string): Blueprint | undefined {
+  const p = prompt.toLowerCase();
+  return CURATED.find((bp) => bp.prompt && p && (p.includes(bp.appName.toLowerCase()) || wordsOverlap(p, bp.prompt)));
+}
+
+/** crude but free: ≥2 shared content words → treat as a match */
+function wordsOverlap(a: string, b: string): boolean {
+  const STOP = new Set(["an", "a", "app", "to", "for", "with", "the", "and", "of", "your", "my", "track", "tracker"]);
+  const aw = a.split(/[^a-z]+/).filter((w) => w.length > 2 && !STOP.has(w));
+  const bw = new Set(b.toLowerCase().split(/[^a-z]+/));
+  let hits = 0;
+  for (const w of aw) if (bw.has(w)) hits++;
+  return hits >= 2;
+}
+
+/** the default showcase scenario */
+export function defaultCurated(): Blueprint {
+  return CURATED[0];
+}
